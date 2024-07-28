@@ -288,11 +288,11 @@ class LabelProcessor:
         logging.debug("merging data...")
         match merge_mode:
             case "date":
-                for date in self.common_dates:
+                for date in tqdm(self.common_dates, disable=self.disable_tqdm):
                     merged_df = self._merge_date(date)
                     merged_df.to_csv(os.path.join(save_folder, f"{date}.csv"))
             case "stock_code":
-                for code in self.common_codes:
+                for code in tqdm(self.common_codes, disable=self.disable_tqdm):
                     merged_df = self._merge_stock_code(code)
                     merged_df.to_csv(os.path.join(save_folder, f"{code}.csv"))
             case "all":
@@ -313,7 +313,6 @@ def parse_args():
     parser_alpha.add_argument("--save_folder", type=str, required=True, help="Path of folder for AlphaProcessor to save processed result")
     parser_alpha.add_argument("--fill_value", type=float, default=0, help="Filling value for missing value in AlphaProcessor")
     parser_alpha.add_argument("--merge_mode", type=str, default="date", help="Merge mode for alpha data, `date`, `stock_code` or `all`. Default `date`")
-
 
     parser_label = subparsers.add_parser('label', help='Processor for label data')
     parser_label.add_argument("--data_folder", type=str, required=True, help="path of folder for label pickle files")
