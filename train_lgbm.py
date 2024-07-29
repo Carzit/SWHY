@@ -351,7 +351,7 @@ class StackingModelEnsembler(ModelEnsembler):
                  model_paths: List[str] | None = None, 
                  model_folder: str | None = None):
         super().__init__(model_paths, model_folder)
-        self.meta_model = LinearRegression()
+        self.meta_model = LinearRegression(fit_intercept=False)
     
     @property
     def coef_(self):
