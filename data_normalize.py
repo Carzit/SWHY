@@ -49,7 +49,8 @@ class DisributedNormalizer:
         min_val = df.min()
         max_val = df.max()
         median = df.median()
-        mad = np.median(np.abs(df - median), axis=0)
+        mad = pd.Series(np.median(np.abs(df - median), axis=0))
+
 
         return DateData(path=file_path, 
                         date=date, 
@@ -173,5 +174,7 @@ if __name__ == "__main__":
     normalizer = DisributedNormalizer(folder_path=args.data_folder)
     normalizer.process(normalization_mode=args.mode, output_dir=save_folder)
 
-# python preprocess.py --log_folder "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\log" --data_folder "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\alpha" --mode "cs_zscore"
+    logging.debug(f"{args.mode} normalization complete.")
+
+# python data_normalize.py --log_folder "log" --data_folder "data\processed\Alpha" --mode "global_zscore" --save_folder "data\processed\alpha_global_zscore"
 

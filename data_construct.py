@@ -28,6 +28,7 @@ class LabelData(FileData):
     dates: List[str]
     label: str
 
+# TODO 将Alpha和label写在一个
 
 class AlphaProcessor:
     def __init__(self, folder_path:str, disable_tqdm:bool=False):
@@ -223,7 +224,7 @@ class LabelProcessor:
         merged_df = pd.DataFrame(index=self.common_dates, columns=[])
         merged_df.index.name = 'date'
 
-        for label_data in tqdm(self.label_data_list, disable=self.disable_tqdm):
+        for label_data in self.label_data_list:
             if stock_code in label_data.codes:
                 series = label_data.dataframe[stock_code]
                 series.name = label_data.label
@@ -238,7 +239,7 @@ class LabelProcessor:
         merged_df = pd.DataFrame(index=self.common_codes, columns=[])
         merged_df.index.name = 'stock_code'
 
-        for label_data in tqdm(self.label_data_list, disable=self.disable_tqdm):
+        for label_data in self.label_data_list:
             if date in label_data.dates:
                 series = label_data.dataframe.loc[date]
                 series.name = label_data.label
@@ -299,6 +300,25 @@ class LabelProcessor:
                 merged_df = self._merge_all()
                 merged_df.to_csv(os.path.join(save_folder, f"merged_label_data.csv"))
 
+class DataAligner:
+    def __init__(self, x_dir:str, y_dir:str) -> None:
+        self.x_dir = x_dir
+        self.y_dir = y_dir
+
+    def process(self):
+        x_files = {os.path.basename(f) for f in os.listdir(self.x_dir) if os.path.isfile(os.path.join(self.x_dir, f))}
+        y_files = {os.path.basename(f) for f in os.listdir(self.y_dir) if os.path.isfile(os.path.join(self.y_dir, f))}
+
+        common_files = x_files.intersection(y_files)
+        logging.debug(f"Total {len(common_files)} common files.")
+        logging.debug(f"{len(x_files) - len(common_files)} will be removed in {self.x_dir}")
+        logging.debug(f"{len(y_files) - len(common_files)} will be removed in {self.y_dir}")
+
+        for folder in [self.x_dir, self.y_dir]:
+            for f in os.listdir(folder):
+                file_path = os.path.join(folder, f)
+                if os.path.isfile(file_path) and os.path.basename(f) not in common_files:
+                    os.remove(file_path)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Data Preprocessor. Usage: data.py [-h] [--log_folder LOG_FOLDER] [--log_name LOG_NAME] {alpha,label} --data_folder DATA_FOLDER --save_folder SAVE_FOLDER [--fill_value FILL_VALUE --merge_mode MERGE_MODE]")
@@ -320,6 +340,10 @@ def parse_args():
     parser_label.add_argument("--fill_value", type=float, default=0, help="fill value for missing value in LabelProcessor")
     parser_label.add_argument("--merge_mode", type=str, default="date", help="Merge mode for label data, `date`, `stock_code` or `all`. Default `all`")
 
+    parser_align = subparsers.add_parser('align', help='Aligner for alpha and label data')
+    parser_align.add_argument("--alpha_folder", type=str, required=True, help="path of folder for AlphaProcessor to save processed result")
+    parser_align.add_argument("--label_folder", type=str, required=True, help="path of folder for LabelProcessor to save processed result")
+
     return parser.parse_args()
 
 
@@ -336,19 +360,32 @@ if __name__ == "__main__":
         format='%(asctime)s - [%(levelname)s] : %(message)s',
         handlers=[logging.FileHandler(os.path.join(log_folder, log_name)), logging.StreamHandler()])
     
-    if not os.path.exists(args.save_folder):    
-        os.makedirs(args.save_folder)
+    
 
     logging.debug(f"Command: {' '.join(sys.argv)}")
     logging.debug(f"Params: {vars(args)}")
     
     match args.processor:
         case "alpha":
+            if not os.path.exists(args.save_folder):    
+                os.makedirs(args.save_folder)
             processor = AlphaProcessor(args.data_folder)
             processor.process(fill_value=args.fill_value, merge_mode=args.merge_mode, save_folder=args.save_folder)
+            logging.debug(f"{args.processor} data construct complete.")
         case "label":
+            if not os.path.exists(args.save_folder):    
+                os.makedirs(args.save_folder)
             processor = LabelProcessor(args.data_folder)
             processor.process(fill_value=args.fill_value, merge_mode=args.merge_mode, save_folder=args.save_folder)
+            logging.debug(f"{args.processor} data construct complete.")
+        case "align":
+            aligner = DataAligner(x_dir=args.alpha_folder, y_dir=args.label_folder)
+            aligner.process()
+            logging.debug(f"Data Alignment complete.")
+
+    
 
 # Example
-# python data——construct.py --log_folder "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\log" alpha --data_folder "C:\Users\C'heng\PycharmProjects\SWHY\data\new\Alpha101" --save_folder "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\alpha"
+# python data_construct.py --log_folder "log" alpha --data_folder "data\Alpha101" --save_folder "data\processed\Alpha"
+# python data_construct.py --log_folder "log" label --data_folder "data\label" --save_folder "data\processed\label"
+# python data_construct.py --log_folder "log" align --alpha_folder "data\processed\Alpha" --label_folder "data\processed\label"

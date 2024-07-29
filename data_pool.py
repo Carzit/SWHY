@@ -183,4 +183,6 @@ if __name__ == "__main__":
                                   shutil_mode=args.shutil_mode)
     processor.process()
 
-# python data_pool.py --source_x_dir "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\alpha_norm" --source_y_dir "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\label_norm" --dest_dir "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\pools_random" --max_files_per_pool 4 --train_test_ratio 0.8 --split_mode "random" --shutil_mode "copy" --log_folder "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\log"
+    logging.debug("data pool complete.")
+
+# python data_pool.py --source_x_dir "data\processed\alpha_global_zscore" --source_y_dir "data\processed\label" --dest_dir "data\pool" --max_files_per_pool 200 --train_test_ratio 0.8 --split_mode "random" --shutil_mode "copy" --log_folder "log"

@@ -133,6 +133,9 @@ class LGBMTrainer:
     def train(self):
         train_x = self.load_pool_data(self.train_x_dir)
         train_y = self.load_pool_data(self.train_y_dir)[self.label_name]
+        print(train_x.shape)
+        print(train_y.shape)
+        sys.exit()
 
         self.model.fit(X=train_x.values, y=train_y.values)
         self.save_model()
@@ -466,4 +469,4 @@ if __name__ == "__main__":
 
     trainer.eval(ensembler)
 
-# python train_lgbm.py --data_folder "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\pools_serial" --label_name "Alpha_001" --random_state 123 --log_folder "C:\Users\C'heng\PycharmProjects\SWHY\data\preprocess\log"
+# python train_lgbm.py --data_folder "data\pool" --label_name "ret10" --model_folder "model\lgbm" --metric "IC" --ensemble_type "average" --random_state 123 --log_folder "log"
