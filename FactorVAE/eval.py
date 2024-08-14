@@ -18,7 +18,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from matplotlib import pyplot as plt
 import plotly.graph_objs as go
 
-from dataset import StockDataset, StockSequenceDataset, RandomSampleSampler
+from dataset import StockDataset, StockSequenceDataset
 from nets import FactorVAE
 from loss import ObjectiveLoss, MSE_Loss, KL_Div_Loss, PearsonCorr, SpearmanCorr
 from utils import str2bool
@@ -50,7 +50,8 @@ class FactorVAEEvaluator:
     def load_dataset(self, test_set:StockSequenceDataset):
         self.test_loader = DataLoader(dataset=test_set,
                                         batch_size=None, 
-                                        shuffle=False)
+                                        shuffle=False,
+                                        num_workers=4)
 
     def load_checkpoint(self, model_path:str):
         if model_path.endswith(".pt"):
@@ -105,7 +106,7 @@ class Plotter:
     def plot_score(self, pred_scores, latent_scores):
         plt.figure(figsize=(10, 6))
         plt.plot(pred_scores, label='pred scores', marker='', color="b")
-        plt.plot(latent_scores, label='latent scores', marker='', color="p")
+        plt.plot(latent_scores, label='latent scores', marker='', color="r")
 
         plt.legend()
         plt.title('Evaluation Scores')
@@ -131,6 +132,29 @@ class Plotter:
         if not filename.endswith(".png"):
             filename = filename + ".png"
         plt.savefig(filename)
+
+if __name__ == "__main__":
+    os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+    datasets = torch.load(r"D:\PycharmProjects\SWHY\data\preprocess\dataset.pt")
+    test_set = datasets["test"]
+
+    model = FactorVAE(input_size=101, 
+                      num_gru_layers=2, 
+                      gru_hidden_size=32, 
+                      hidden_size=16, 
+                      latent_size=4,
+                      gru_drop_out=0.1)
+    
+    evaluator = FactorVAEEvaluator(model=model)
+    evaluator.load_checkpoint(r"D:\PycharmProjects\SWHY\model\factor-vae\model5\model5_epoch2.pt")
+    evaluator.load_dataset(test_set)
+    #print(trainer.model.feature_extractor.state_dict)
+    #print(trainer.eval(test_set, "MSE"))
+    
+    evaluator.eval("MSE")
+    evaluator.visualize()
+
+
 
                     
             

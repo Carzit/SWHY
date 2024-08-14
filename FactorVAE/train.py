@@ -59,17 +59,20 @@ class FactorVAETrainer:
                      sampler:Optional[Sampler] = None,
                      shuffle:bool = True):
         # 数据集加载
-        if sampler is None:
+        if sampler is not None:
             self.train_loader = DataLoader(dataset=train_set,
                                         batch_size=batch_size, 
-                                        sampler=sampler)
+                                        sampler=sampler,
+                                        num_workers=4)
         else:
             self.train_loader = DataLoader(dataset=train_set,
                                         batch_size=batch_size, 
-                                        shuffle=shuffle)
+                                        shuffle=shuffle,
+                                        num_workers=4)
         self.val_loader = DataLoader(dataset=val_set, 
                                     batch_size=batch_size,
-                                    shuffle=shuffle)
+                                    shuffle=shuffle,
+                                    num_workers=4)
         
     def save_checkpoint(self, 
                         save_folder:str, 
@@ -252,6 +255,8 @@ if __name__ == "__main__":
     test_set = datasets["test"]
     if args.num_batches_per_epoch is not None:
         train_sampler = RandomSampleSampler(train_set, args.num_batches_per_epoch)
+    else:
+        train_sampler = None
 
     model = FactorVAE(input_size=args.input_size, 
                       num_gru_layers=args.num_gru_layers, 
@@ -300,3 +305,4 @@ if __name__ == "__main__":
 
 # python train.py --log_folder "D:\PycharmProjects\SWHY\log\FactorVAE" --log_name "Model4" --dataset_path "D:\PycharmProjects\SWHY\data\preprocess\dataset_cs_zscore.pt" --input_size 101 --num_gru_layers 2 --gru_hidden_size 32 --hidden_size 16 --latent_size 4 --save_folder "D:\PycharmProjects\SWHY\model\factor-vae\model1" --save_name "model4" --save_format ".pt" --sample_per_batch 200
 
+# python train.py --log_folder "D:\PycharmProjects\SWHY\log\FactorVAE" --log_name "Model5" --dataset_path "D:\PycharmProjects\SWHY\data\preprocess\dataset.pt" --input_size 101 --num_gru_layers 2 --gru_hidden_size 32 --hidden_size 16 --latent_size 4 --save_folder "D:\PycharmProjects\SWHY\model\factor-vae\model5" --save_name "model5" --save_format ".pt" --sample_per_batch 50 --num_batches_per_epoch 200

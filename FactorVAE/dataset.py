@@ -45,44 +45,43 @@ class StockDataset(Dataset):
                  data_x_dir:str, 
                  data_y_dir:str, 
                  label_name:str, 
-                 format:Literal["csv", "pkl", "parquet", "feather"],
-                 cache_size:int) -> None:
+                 format:Literal["csv", "pkl", "parquet", "feather"] = "csv",
+                 cache_size:int = 10) -> None:
         super().__init__()
         self.data_x_dir:str = data_x_dir
         self.data_y_dir:str = data_y_dir
         
-        self.format:str = format
+        self.format:str = "csv"
         self.label_name:str = label_name
 
         self.x_file_paths:List[str] = [os.path.join(data_x_dir, f) for f in os.listdir(data_x_dir) if f.endswith(format)]
         self.y_file_paths:List[str] = [os.path.join(data_y_dir, f) for f in os.listdir(data_y_dir) if f.endswith(format)]
 
         self.cache_size:int = cache_size
-        self.load_df:Callable = self.create_cached_loader(self.cache_size)
+        #self.load_df:Callable = self.create_cached_loader()
     
-    def create_cached_loader(self, cache_size) -> Callable:
-        @lru_cache(maxsize=cache_size)
-        def load_dataframe(path:str, format:Literal["csv", "pkl", "parquet", "feather"]="pkl")->pd.DataFrame:
-            if format == "csv":
-                df = pd.read_csv(path, index_col=0)
-            elif format ==  "pkl":
-                df = pd.read_pickle(path)
-            elif format == "parquet":
-                df = pd.read_parquet(path)
-            elif format == "feather":
-                df = pd.read_feather(path)
-            else:
-                raise NotImplementedError()
-            return df
-        return load_dataframe
+
+    @lru_cache(maxsize=10)
+    def load_dataframe(self, path:str, format:Literal["csv", "pkl", "parquet", "feather"])->pd.DataFrame:
+        if format == "csv":
+            df = pd.read_csv(path, index_col=0)
+        elif format ==  "pkl":
+            df = pd.read_pickle(path)
+        elif format == "parquet":
+            df = pd.read_parquet(path)
+        elif format == "feather":
+            df = pd.read_feather(path)
+        else:
+            raise NotImplementedError()
+        return df
 
     def __getitem__(self, index) -> Tuple[torch.Tensor]:
         """根据索引 index 从文件路径列表中读取对应的 CSV 文件。将读取的数据转换为 PyTorch 张量，并处理 NaN 值。
         注意，这是一种惰性获取数据的协议，数据集类并不事先将所有数据载入内存，而是根据索引再做读取。能较好地应对大量数据的情形，节约内存；但训练时由于IO瓶颈速度较慢，需要花费大量时间在csv的读取上面。"""
-        X = self.load_df(self.x_file_paths[index], format=self.format).iloc[:,2:]   #pd.read_csv(self.x_file_paths[index], index_col=[0,1,2])
-        X = torch.from_numpy(X.values).nan_to_num().float()
-        y = self.load_df(self.y_file_paths[index], format=self.format).iloc[:,2:][self.label_name] #pd.read_csv(self.y_file_paths[index], index_col=[0,1,2])[self.label_name]
-        y = torch.from_numpy(y.values).nan_to_num().float()
+        X = self.load_dataframe(self.x_file_paths[index], format=self.format).iloc[:,2:]   #pd.read_csv(self.x_file_paths[index], index_col=[0,1,2])
+        X = torch.from_numpy(X.values).float().nan_to_num()
+        y = self.load_dataframe(self.y_file_paths[index], format=self.format).iloc[:,2:][self.label_name] #pd.read_csv(self.y_file_paths[index], index_col=[0,1,2])[self.label_name]
+        y = torch.from_numpy(y.values).float().nan_to_num()
         return X, y
     
     def __len__(self):          
@@ -105,7 +104,7 @@ class StockDataset(Dataset):
 
         i = 0
         for j in split_lengths:
-            splitted_dataset = StockDataset(data_x_dir=self.data_x_dir, data_y_dir=self.data_y_dir, label_name=self.label_name)
+            splitted_dataset = StockDataset(data_x_dir=self.data_x_dir, data_y_dir=self.data_y_dir, label_name=self.label_name, format=self.format, cache_size=self.cache_size)
             splitted_dataset.x_file_paths = splitted_dataset.x_file_paths[i:i+j]
             splitted_dataset.y_file_paths = splitted_dataset.y_file_paths[i:i+j]
             splitted_datasets.append(splitted_dataset)
@@ -127,7 +126,7 @@ class StockDataset(Dataset):
 
         i = 0
         for j in split_lengths:
-            splitted_dataset = StockDataset(data_x_dir=self.data_x_dir, data_y_dir=self.data_y_dir, label_name=self.label_name)
+            splitted_dataset = StockDataset(data_x_dir=self.data_x_dir, data_y_dir=self.data_y_dir, label_name=self.label_name, format=self.format, cache_size=self.cache_size)
             splitted_dataset.x_file_paths = shuffled_x_file_paths[i:i+j]
             splitted_dataset.y_file_paths = shuffled_y_file_paths[i:i+j]
             splitted_datasets.append(splitted_dataset)
@@ -234,6 +233,8 @@ if __name__ == "__main__":
 # python dataset.py --x_folder "D:\PycharmProjects\SWHY\data\preprocess\alpha" --y_folder "D:\PycharmProjects\SWHY\data\preprocess\label" --label_name "ret10" --train_seq_len 20 --save_path "D:\PycharmProjects\SWHY\data\preprocess\dataset.pt"
 
 # python dataset.py --x_folder "D:\PycharmProjects\SWHY\data\preprocess\alpha_cs_zscore" --y_folder "D:\PycharmProjects\SWHY\data\preprocess\label" --label_name "ret10" --train_seq_len 20 --save_path "D:\PycharmProjects\SWHY\data\preprocess\dataset_cs_zscore.pt"
+
+# python dataset.py --x_folder "D:\PycharmProjects\SWHY\data\preprocess\alpha" --y_folder "D:\PycharmProjects\SWHY\data\preprocess\label" --label_name "ret10" --train_seq_len 20 --save_path "D:\PycharmProjects\SWHY\data\preprocess\dataset.pt" --mask_len 10
 
 
 
