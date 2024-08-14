@@ -37,6 +37,31 @@ class LabelData(FileData):
     dates: List[str]
     label: str
 
+def save_dataframe(df:pd.DataFrame, path:str, format:Literal["csv", "pkl", "parquet", "feather"]="pkl"):
+    if format == "csv":
+        df.to_csv(path)
+    elif format ==  "pkl":
+        df.to_pickle(path)
+    elif format == "parquet":
+        df.to_parquet(path)
+    elif format == "feather":
+        df.to_feather(path)
+    else:
+        raise NotImplementedError()
+
+def load_dataframe(path:str, format:Literal["csv", "pkl", "parquet", "feather"]="pkl"):
+    if format == "csv":
+        df = pd.read_csv(path, index_col=0)
+    elif format ==  "pkl":
+        df = pd.read_pickle(path)
+    elif format == "parquet":
+        df = pd.read_parquet(path)
+    elif format == "feather":
+        df = pd.read_feather(path)
+    else:
+        raise NotImplementedError()
+    return df
+
 class AlphaProcessor:
     """
     Alpha处理管线
@@ -56,7 +81,7 @@ class AlphaProcessor:
         # 读取指定路径的pickle文件，处理缺失值和无限值，并返回一个 AlphaData 对象。
         df:pd.DataFrame = pd.read_pickle(file_path)
 
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        #df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.fillna(fill_value, inplace=True)
 
         codes = df.columns.tolist()
@@ -140,7 +165,8 @@ class AlphaProcessor:
 
     def process(self, 
                 merge_mode:Literal["date", "stock_code", "all"]="date", 
-                save_folder:Optional[str]=os.curdir) -> None:
+                save_folder:Optional[str]=os.curdir,
+                save_format:Literal["csv", "pkl", "parquet", "feather"]="pkl") -> None:
         # 根据指定的合并模式（日期、股票代码或全部）处理数据，并将结果以csv文件格式，保存到指定文件夹中。
         logging.debug("recording extra info")
         with open(os.path.join(save_folder, "alpha_extra_info.json"), "w") as f:
@@ -151,14 +177,20 @@ class AlphaProcessor:
         if merge_mode == "date":
             for date in tqdm(self.common_dates, disable=self.disable_tqdm):
                 merged_df = self._merge_date(date)
-                merged_df.to_csv(os.path.join(save_folder, f"{date}.csv"))
+                save_dataframe(df=merged_df,
+                               path=os.path.join(save_folder, f"{date}.{save_format}"),
+                               format=save_format)
         elif merge_mode == "stock_code":
             for code in tqdm(self.common_codes, disable=self.disable_tqdm):
                 merged_df = self._merge_stock_code(code)
-                merged_df.to_csv(os.path.join(save_folder, f"{code}.csv"))
+                save_dataframe(df=merged_df,
+                               path=os.path.join(save_folder, f"{code}.{save_format}"),
+                               format=save_format)
         elif merge_mode == "all":
             merged_df = self._merge_all()
-            merged_df.to_csv(os.path.join(save_folder, f"merged_alpha_data.csv"))
+            save_dataframe(df=merged_df,
+                           path=os.path.join(save_folder, f"all.{save_format}"),
+                           format=save_format)
 
 class LabelProcessor:
     """
@@ -179,7 +211,7 @@ class LabelProcessor:
         # 读取指定路径的pickle文件，处理缺失值和无限值，并返回一个 LabelData 对象。
         df:pd.DataFrame = pd.read_pickle(file_path)
 
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        #df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.fillna(fill_value, inplace=True)
 
         codes = df.columns.tolist()
@@ -263,7 +295,8 @@ class LabelProcessor:
 
     def process(self, 
                 merge_mode:Literal["date", "stock_code", "all"]="date", 
-                save_folder:Optional[str]=os.curdir) -> None:
+                save_folder:Optional[str]=os.curdir,
+                save_format:Literal["csv", "pkl", "parquet", "feather"]="pkl") -> None:
         # 根据指定的合并模式（日期、股票代码或全部）处理数据，并将结果以csv文件格式，保存到指定文件夹中。
         logging.debug(f"MODE: {merge_mode}")
 
@@ -276,14 +309,20 @@ class LabelProcessor:
         if merge_mode == "date":
             for date in tqdm(self.common_dates, disable=self.disable_tqdm):
                 merged_df = self._merge_date(date)
-                merged_df.to_csv(os.path.join(save_folder, f"{date}.csv"))
+                save_dataframe(df=merged_df,
+                               path=os.path.join(save_folder, f"{date}.{save_format}"),
+                               format=save_format)
         elif merge_mode == "stock_code":
             for code in tqdm(self.common_codes, disable=self.disable_tqdm):
                 merged_df = self._merge_stock_code(code)
-                merged_df.to_csv(os.path.join(save_folder, f"{code}.csv"))
+                save_dataframe(df=merged_df,
+                               path=os.path.join(save_folder, f"{code}.{save_format}"),
+                               format=save_format)
         elif merge_mode == "all":
             merged_df = self._merge_all()
-            merged_df.to_csv(os.path.join(save_folder, f"merged_label_data.csv"))
+            save_dataframe(df=merged_df,
+                           path=os.path.join(save_folder, f"all.{save_format}"),
+                           format=save_format)
 
 class DataAligner:
     """

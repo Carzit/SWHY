@@ -28,6 +28,7 @@ class DataPoolProcessor:
                  test_pool_count: Optional[int] = None, 
                  max_files_per_pool: Optional[int] = None, 
                  train_test_ratio: float = 0.8, 
+                 mask_length: int = 0, 
                  split_mode: Literal["random", "serial"] = "random",
                  shutil_mode: Literal["move", "copy"] = "move"):
         self.source_x_dir = source_x_dir # 源特征数据集的目录，即alpha。
@@ -38,6 +39,7 @@ class DataPoolProcessor:
         self.test_pool_count = test_pool_count # 测试集的池数量
         self.max_files_per_pool = max_files_per_pool # 每个池中最大文件数量
         self.train_test_ratio = train_test_ratio # 训练集和测试集的比例，默认为 0.8。
+        self.mask_length = mask_length
 
         self.split_mode = split_mode # 数据分割模式，可以是 "random"（随机）或 "serial"（顺序），默认为 "random"。
         self.shutil_mode = shutil_mode # 文件操作模式，可以是 "move"（移动）或 "copy"（复制），默认为 "move"。
@@ -51,9 +53,12 @@ class DataPoolProcessor:
 
     def split_data(self, files: List[str]) -> Tuple[List[str], List[str]]:
         # 根据指定的比例将文件列表分割成训练集和测试集。
-        train_size = int(len(files) * self.train_test_ratio)
-        train_files = files[:train_size]
-        test_files = files[train_size:]
+        train_size = round(len(files) * self.train_test_ratio)
+        train_mask_size = round(self.mask_length * self.train_test_ratio)
+        test_mask_size = self.mask_length - train_mask_size
+        
+        train_files = files[:train_size-train_mask_size]
+        test_files = files[train_size+test_mask_size:]
         return train_files, test_files
 
     def distribute_to_pools(self, files: List[str], pool_count: int, dest_subdir: str) -> None:  

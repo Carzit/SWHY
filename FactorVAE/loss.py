@@ -63,8 +63,8 @@ class MSE_Loss(nn.MSELoss):
         super().__init__(size_average, reduce, reduction)
         self.scale = scale
     
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return self.scale * super().forward(input, target)
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return self.scale * super().forward(pred, target)
 
 class NLL_Loss(nn.CrossEntropyLoss):
     def __init__(self, 
@@ -76,5 +76,34 @@ class NLL_Loss(nn.CrossEntropyLoss):
                  label_smoothing: float = 0) -> None:
         super().__init__(weight, size_average, ignore_index, reduce, reduction, label_smoothing)
     
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return super().forward(input, target)
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return super().forward(pred, target)
+    
+class PearsonCorr(nn.Module):
+    def __init__(self):
+        super(PearsonCorr, self).__init__()
+
+    def forward(self, pred:torch.Tensor, target:torch.Tensor):
+        pred_mean = torch.mean(pred)
+        target_mean = torch.mean(target)
+        cov = torch.mean((pred - pred_mean) * (target - target_mean))
+        pred_std = torch.std(pred)
+        target_std = torch.std(target)
+        corr = cov / (pred_std * target_std)
+        return corr
+
+class SpearmanCorr(nn.Module):
+    def __init__(self):
+        super(SpearmanCorr, self).__init__()
+
+    def forward(self, pred:torch.Tensor, target:torch.Tensor):
+        pred_rank = pred.argsort().argsort().float()
+        target_rank = target.argsort().argsort().float()
+
+        pred_mean = torch.mean(pred_rank)
+        target_mean = torch.mean(target_rank)
+        cov = torch.mean((pred_rank - pred_mean) * (target_rank - target_mean))
+        pred_std = torch.std(pred_rank)
+        target_std = torch.std(target_rank)
+        corr = cov / (pred_std * target_std) 
+        return corr

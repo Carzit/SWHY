@@ -12,10 +12,10 @@ from scipy.stats import pearsonr, spearmanr
 
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from dataset import StockDataset, StockSequenceDataset
+from dataset import StockDataset, StockSequenceDataset, RandomSampleSampler
 from nets import FactorVAE
 from loss import ObjectiveLoss
 from utils import str2bool
@@ -55,15 +55,21 @@ class FactorVAETrainer:
     def load_dataset(self, 
                      train_set:StockSequenceDataset, 
                      val_set:StockSequenceDataset,
-                     shuffle:bool = True,
-                     batch_size:Optional[int] = None):
+                     batch_size:Optional[int] = None,
+                     sampler:Optional[Sampler] = None,
+                     shuffle:bool = True):
         # 数据集加载
-        self.train_loader = DataLoader(dataset=train_set,
-                                          batch_size=batch_size, 
-                                          shuffle=shuffle)
+        if sampler is None:
+            self.train_loader = DataLoader(dataset=train_set,
+                                        batch_size=batch_size, 
+                                        sampler=sampler)
+        else:
+            self.train_loader = DataLoader(dataset=train_set,
+                                        batch_size=batch_size, 
+                                        shuffle=shuffle)
         self.val_loader = DataLoader(dataset=val_set, 
-                                     batch_size=batch_size,
-                                     shuffle=shuffle)
+                                    batch_size=batch_size,
+                                    shuffle=shuffle)
         
     def save_checkpoint(self, 
                         save_folder:str, 
@@ -192,33 +198,6 @@ class FactorVAETrainer:
 
         writer.close()
 
-    def eval(self, dataset, metric:Literal["MSE", "RMSE", "IC", "Rank_IC"]="IC"):
-        # 评估模型
-        self.test_loader = DataLoader(dataset=dataset, 
-                                      batch_size=None,
-                                      shuffle=False)
-        if metric == "MSE":
-            eval_func = lambda y_pred, y: ((y_pred - y) ** 2).mean()
-        elif metric == "RMSE":
-            eval_func = lambda y_pred, y: ((y_pred - y) ** 2).mean() ** 0.5
-        elif metric == "IC":
-            eval_func = lambda y_pred, y: pearsonr(y_pred, y).statistic
-        elif metric == "Rank_IC":
-            eval_func = lambda y_pred, y: spearmanr(y_pred, y).statistic
-        
-        eval_scores:List[float] = []
-        model = self.model.to(device=self.device)
-        model.eval() # set eval mode to frozen layers like dropout
-        with torch.no_grad(): 
-            for batch, (X, y) in enumerate(tqdm(self.test_loader)):
-                X = X.to(device=self.device)
-                y = y.to(device=self.device)
-                y_pred, mu_prior, sigma_prior  = model.predict(x=X)
-
-                y = y.cpu().numpy()
-                y_pred = y_pred.cpu().numpy()
-                eval_scores.append(eval_func(y_pred=y_pred, y=y))
-        return sum(eval_scores) / len(eval_scores)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="FactorVAE Training.")
@@ -227,7 +206,6 @@ def parse_args():
     parser.add_argument("--log_name", type=str, default="log.txt", help="Name of log file. Default `log.txt`")
 
     parser.add_argument("--dataset_path", type=str, required=True, help="Path of dataset .pt file")
-    parser.add_argument("--shuffle", type=str2bool, default=True, help="Whether to shuffle dataloader. Default True")
     parser.add_argument("--checkpoint_path", type=str, default=None, help="Path of checkpoint")
 
     parser.add_argument("--input_size", type=int, required=True, help="Input size of feature extractor, i.e. num of features.")
@@ -239,7 +217,9 @@ def parse_args():
 
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate for optimizer. Default 0.001")
     parser.add_argument("--gamma", type=float, default=1, help="Gamma for KL Div in Objective Function Loss. Default 1")
-
+    parser.add_argument("--shuffle", type=str2bool, default=True, help="Whether to shuffle dataloader. Default True")
+    parser.add_argument("--num_batches_per_epoch", type=int, default=None, help="Num of batches sampled from all batches to be trained per epoch. Note that sampler option is mutually exclusive with shuffle. Specify None to disable Default None")
+    
     parser.add_argument("--max_epoches", type=int, default=20, help="Max Epoches for train loop")
     parser.add_argument("--sample_per_batch", type=int, default=0, help="Check X, y and all kinds of outputs per n batches in one epoch. Specify 0 to unable. Default 0")
     parser.add_argument("--report_per_epoch", type=int, default=1, help="Report train loss and validation loss per n epoches. Specify 0 to unable. Default 1")
@@ -270,6 +250,8 @@ if __name__ == "__main__":
     train_set = datasets["train"]
     val_set = datasets["val"]
     test_set = datasets["test"]
+    if args.num_batches_per_epoch is not None:
+        train_sampler = RandomSampleSampler(train_set, args.num_batches_per_epoch)
 
     model = FactorVAE(input_size=args.input_size, 
                       num_gru_layers=args.num_gru_layers, 
@@ -294,7 +276,10 @@ if __name__ == "__main__":
     trainer = FactorVAETrainer(model=model,
                                loss_func=loss_func,
                                optimizer=optimizer)
-    trainer.load_dataset(train_set=train_set, val_set=val_set, shuffle=args.shuffle)
+    trainer.load_dataset(train_set=train_set, 
+                         val_set=val_set, 
+                         shuffle=args.shuffle, 
+                         sampler=train_sampler)
     if args.checkpoint_path is not None:
         trainer.load_checkpoint(args.checkpoint_path)
     trainer.set_configs(max_epoches=args.max_epoches,

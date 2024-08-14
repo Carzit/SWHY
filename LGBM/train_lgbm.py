@@ -135,15 +135,16 @@ class LGBMTrainer:
             metric = self.metric
         else:
             self.metric = metric
-        match metric:
-            case "MSE":
-                eval_score = ((y_pred - test_y.values) ** 2).mean()
-            case "RMSE":
-                eval_score = ((y_pred - test_y.values) ** 2).mean() ** 0.5
-            case "IC":
-                eval_score, _ = pearsonr(y_pred, test_y.values)
-            case "Rank_IC":
-                eval_score, _ = spearmanr(y_pred, test_y.values)
+        if metric == "MSE":
+            eval_score = ((y_pred - test_y.values) ** 2).mean()
+        elif  metric == "RMSE":
+            eval_score = ((y_pred - test_y.values) ** 2).mean() ** 0.5
+        elif  metric == "IC":
+            eval_score, _ = pearsonr(y_pred, test_y.values)
+        elif  metric == "Rank_IC":
+            eval_score, _ = spearmanr(y_pred, test_y.values)
+        else:
+            raise NotImplementedError()
         return eval_score
     
     def train(self):
@@ -336,15 +337,16 @@ class ModelEnsembler:
         # 评估方法。对预测结果进行评估，支持多种评估指标（MSE、RMSE、IC、Rank_IC）。
         y_pred = self.predict(X)
 
-        match metric:
-            case "MSE":
-                eval_score = ((y_pred - y) ** 2).mean()
-            case "RMSE":
-                eval_score = ((y_pred - y) ** 2).mean() ** 0.5
-            case "IC":
-                eval_score, _ = pearsonr(y_pred, y)
-            case "Rank_IC":
-                eval_score, _ = spearmanr(y_pred, y)
+        if metric == "MSE":
+            eval_score = ((y_pred - y) ** 2).mean()
+        elif metric == "RMSE":
+            eval_score = ((y_pred - y) ** 2).mean() ** 0.5
+        elif metric == "IC":
+            eval_score, _ = pearsonr(y_pred, y)
+        elif metric == "Rank_IC":
+            eval_score, _ = spearmanr(y_pred, y)
+        else:
+            raise NotImplementedError()
         return eval_score
 
 class AverageModelEnsembler(ModelEnsembler):
