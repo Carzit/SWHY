@@ -8,6 +8,7 @@ from typing import List, Dict, Tuple, Optional, Literal, Union, Any, Callable
 
 from tqdm import tqdm
 from safetensors.torch import save_file, load_file
+import numpy as np
 from scipy.stats import pearsonr, spearmanr
 
 import torch
@@ -47,11 +48,11 @@ class FactorVAEEvaluator:
         self.save_folder:str = "."
         self.plotter = Plotter()
     
-    def load_dataset(self, test_set:StockSequenceDataset):
+    def load_dataset(self, test_set:StockSequenceDataset, num_workers:int = 4):
         self.test_loader = DataLoader(dataset=test_set,
                                         batch_size=None, 
                                         shuffle=False,
-                                        num_workers=4)
+                                        num_workers=num_workers)
 
     def load_checkpoint(self, model_path:str):
         if model_path.endswith(".pt"):
@@ -59,12 +60,23 @@ class FactorVAEEvaluator:
         elif model_path.endswith(".safetensors"):
             self.model.load_state_dict(load_file(model_path))
     
-    def eval(self, metric:Literal["MSE", "IC", "Rank_IC"]="IC"):
+    def calculate_icir(self, ic_list:List[float]):
+        ic_mean = np.mean(ic_list)
+        ic_std = np.std(ic_list, ddof=1)  # Use ddof=1 to get the sample standard deviation
+        n = len(ic_list)
+    
+        if ic_std == 0:
+            return float('inf') if ic_mean != 0 else 0
+        
+        icir = (ic_mean / ic_std) * np.sqrt(n)
+        return icir
+    
+    def eval(self, metric:Literal["MSE", "IC", "Rank_IC", "ICIR", "Rank_ICIR"]="IC"):
         if metric == "MSE":
             self.pred_eval_func = MSE_Loss(scale=1)
-        elif metric == "IC":
+        elif metric == "IC" or "ICIR":
             self.pred_eval_func = PearsonCorr()
-        elif metric == "Rank_IC":
+        elif metric == "Rank_IC" or "Rank_ICIR":
             self.pred_eval_func = SpearmanCorr()
         
         self.eval_scores = []
@@ -86,10 +98,17 @@ class FactorVAEEvaluator:
                 self.y_true_list.append(y)
                 self.y_hat_list.append(y_hat)
                 self.y_pred_list.append(y_pred)
-        logging.info(f"y pred score: {sum(self.pred_scores) / len(self.pred_scores)}")
-        logging.info(f"latent kl divergence: {sum(self.latent_scores) / len(self.latent_scores)}")
+        if metric == "MSE" or "IC" or "Rank_IC":
+            y_pred_score = sum(self.pred_scores) / len(self.pred_scores)
+        elif metric == "ICIR" or "Rank_ICIR":
+            y_pred_score = self.calculate_icir(self.pred_scores)
+        latent_kl_div = sum(self.latent_scores) / len(self.latent_scores)
+        logging.info(f"y pred score: {y_pred_score}")
+        logging.info(f"latent kl divergence: {latent_kl_div}")
     
-    def visualize(self, idx:int=0):
+    def visualize(self, idx:int=0, save_folder:Optional[str]=None):
+        if save_folder is not None:
+            self.save_folder = save_folder
         self.plotter.plot_score(self.pred_scores, 
                                 self.latent_scores)
         self.plotter.save_fig(os.path.join(self.save_folder, "Scores"))
@@ -132,27 +151,65 @@ class Plotter:
         if not filename.endswith(".png"):
             filename = filename + ".png"
         plt.savefig(filename)
+def parse_args():
+    parser = argparse.ArgumentParser(description="FactorVAE Training.")
+
+    parser.add_argument("--log_folder", type=str, default=os.curdir, help="Path of folder for log file. Default `.`")
+    parser.add_argument("--log_name", type=str, default="log.txt", help="Name of log file. Default `log.txt`")
+
+    parser.add_argument("--dataset_path", type=str, required=True, help="Path of dataset .pt file")
+    parser.add_argument("--subset", type=str, default="test", help="Subset of dataset, literally `train`, `val` or `test`. Default `test`")
+    parser.add_argument("--checkpoint_path", type=str, required=True, help="Path of checkpoint")
+
+    parser.add_argument("--input_size", type=int, required=True, help="Input size of feature extractor, i.e. num of features.")
+    parser.add_argument("--num_gru_layers", type=int, required=True, help="Num of GRU layers in feature extractor.")
+    parser.add_argument("--gru_hidden_size", type=int, required=True, help="Hidden size of each GRU layer. num_gru_layers * gru_hidden_size i.e. the input size of FactorEncoder and Factor Predictor.")
+    parser.add_argument("--hidden_size", type=int, required=True, help="Hidden size of FactorVAE(Encoder, Pedictor and Decoder), i.e. num of portfolios.")
+    parser.add_argument("--latent_size", type=int, required=True, help="Latent size of FactorVAE(Encoder, Pedictor and Decoder), i.e. num of factors.")
+    
+    parser.add_argument("--num_workers", type=int, default=4, help="Num of subprocesses to use for data loading. 0 means that the data will be loaded in the main process. Default 4")
+    parser.add_argument("--metric", type=str, default="IC", help="Eval metric type, literally `MSE`, `IC`, `Rank_IC`, `ICIR` or `Rank_ICIR`. Default `IC`. ")
+
+    parser.add_argument("--visualize", type=str2bool, default=True, help="Whether to shuffle dataloader. Default True")
+    parser.add_argument("--index", type=int, default=0, help="Stock index to plot Comparison of y_true, y_hat, and y_pred. Default 0")
+    parser.add_argument("--save_folder", type=str, default=None, help="Folder to save plot figures")
+
+    return parser.parse_args()
 
 if __name__ == "__main__":
+    args = parse_args()
+    
+    os.makedirs(args.log_folder, exist_ok=True)
     os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
-    datasets = torch.load(r"D:\PycharmProjects\SWHY\data\preprocess\dataset.pt")
-    test_set = datasets["test"]
+    os.environ["TF_ENABLE_ONEDNN_OPTS"] = 0
+    
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - [%(levelname)s] : %(message)s',
+        handlers=[logging.FileHandler(os.path.join(args.log_folder, args.log_name)), logging.StreamHandler()])
+    
+    logging.debug(f"Command: {' '.join(sys.argv)}")
+    logging.debug(f"Params: {vars(args)}")
+    
+    datasets:Dict[str, StockSequenceDataset] = torch.load(args.dataset_path)
+    test_set = datasets[args.subset]
 
-    model = FactorVAE(input_size=101, 
-                      num_gru_layers=2, 
-                      gru_hidden_size=32, 
-                      hidden_size=16, 
-                      latent_size=4,
-                      gru_drop_out=0.1)
+    model = FactorVAE(input_size=args.input_size, 
+                      num_gru_layers=args.num_gru_layers, 
+                      gru_hidden_size=args.gru_hidden_size, 
+                      hidden_size=args.hidden_size, 
+                      latent_size=args.latent_size,
+                      gru_drop_out=0)
     
     evaluator = FactorVAEEvaluator(model=model)
-    evaluator.load_checkpoint(r"D:\PycharmProjects\SWHY\model\factor-vae\model5\model5_epoch2.pt")
-    evaluator.load_dataset(test_set)
-    #print(trainer.model.feature_extractor.state_dict)
-    #print(trainer.eval(test_set, "MSE"))
+    evaluator.load_checkpoint(args.checkpoint_path)
+    evaluator.load_dataset(test_set, num_workers=args.num_workers)
     
-    evaluator.eval("MSE")
-    evaluator.visualize()
+    evaluator.eval(metric=args.metric)
+    if args.visualize:
+        evaluator.visualize(idx=args.index, save_folder=args.save_folder)
+        
+
 
 
 

@@ -38,7 +38,7 @@ class ObjectiveLoss(nn.Module):
         # KL Div Loss
         kld_loss = self.kl_div_loss(mu_prior, sigma_prior, mu_posterior, sigma_posterior)
         
-        return recon_loss + kld_loss   
+        return recon_loss + kld_loss, recon_loss, kld_loss   
     
 
 class KL_Div_Loss(nn.Module):

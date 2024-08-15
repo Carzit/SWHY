@@ -2,8 +2,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from typing import Literal
+
 from utils import modules_weight_init
 
+class Exp(nn.Module):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+    def forward(self, x):
+        return torch.exp(x)
+        
 class FeatureExtractor(nn.Module):
     """
     Feature extractor extracts stocks latent features e from the historical sequential characteristics x, formulated as 
@@ -12,24 +20,33 @@ class FeatureExtractor(nn.Module):
 
     In order to capture the temporal dependence in sequences, we adopt the Gate Recurrent Unit(GRU), a variant of RNN (Chung et al. 2014).
     """
-    def __init__(self, input_size, hidden_size, num_layers, drop_out=0.1) -> None:
+    def __init__(self, 
+                 input_size, 
+                 hidden_size, 
+                 num_layers, 
+                 drop_out=0.1,
+                 extract_hidden_state=True) -> None:
         super(FeatureExtractor, self).__init__()
         self.norm_layer = nn.LayerNorm(input_size)
-        self.proj_layer = nn.Sequential(nn.Linear(input_size, hidden_size), nn.LeakyReLU())
-        
+        self.proj_layer = nn.Sequential(nn.Linear(input_size, hidden_size), 
+                                        nn.LeakyReLU())
         self.gru_layer = nn.GRU(hidden_size, 
                                 hidden_size, 
                                 num_layers, 
                                 batch_first=False, 
                                 dropout=drop_out)
+        self.extract_hidden_state = extract_hidden_state
 
     def forward(self, x):# input: [seq_len, num_stocks, input_size(num_features)]
         x = self.norm_layer(x)
         x_proj = self.proj_layer(x) # -> x_proj: [seq_len, num_stocks, hidden_size]
         #print("proj_x:",x_proj)
-        _, h = self.gru_layer(x_proj) # -> h: [num_layers, batch_size, hidden_size]
-        h = h.permute(1, 0, 2) # -> h: [batch_size, num_layers, hidden_size]
-        e = h.reshape(h.shape[0], -1) # -> e: [batch_size, num_layers * hidden_size]
+        out, h = self.gru_layer(x_proj) # -> h: [num_layers, batch_size, hidden_size]
+        if self.extract_hidden_state:
+            h = h.permute(1, 0, 2) # -> h: [batch_size, num_layers, hidden_size]
+            e = h.reshape(h.shape[0], -1) # -> e: [batch_size, num_layers * hidden_size]
+        else:
+            e = out[-1] # -> e: [batch_size, hidden_size]
 
         return e
 
@@ -50,7 +67,7 @@ class PortfolioLayer(nn.Module):
     def __init__(self, num_portfolios, input_size) -> None:
         super(PortfolioLayer, self).__init__()
         self.w_p = nn.Parameter(torch.randn(num_portfolios, input_size))
-        self.b_p = nn.Parameter(torch.zeros(num_portfolios, 1))
+        self.b_p = nn.Parameter(torch.randn(num_portfolios, 1))
 
     def forward(self, y:torch.Tensor, e:torch.Tensor): # y: [num_stocks] e: [num_stocks, input_size]
         a_p = F.softmax(torch.matmul(self.w_p, e.T) + self.b_p, dim=-1) #-> [num_portfolios, num_stocks]
@@ -83,16 +100,25 @@ class FactorEncoder(nn.Module):
     where Softplus(x) = log(1 + exp(x))
 
     """
-    def __init__(self, input_size, hidden_size, latent_size) -> None:
+    def __init__(self, 
+                 input_size, 
+                 hidden_size, 
+                 latent_size,
+                 std_activ:Literal["exp", "softplus"] = "exp") -> None:
         super(FactorEncoder, self).__init__()
         self.portfoliolayer = PortfolioLayer(input_size=input_size, num_portfolios=hidden_size)
         self.map_mu_z_layer = nn.Linear(hidden_size, latent_size)
-        self.map_sigma_z_layer = nn.Linear(hidden_size, latent_size)
+        if std_activ == "exp":
+            self.map_sigma_z_layer = nn.Sequential(nn.Linear(hidden_size, latent_size),
+                                                   Exp())
+        elif std_activ == "softplus":
+            self.map_sigma_z_layer = nn.Sequential(nn.Linear(hidden_size, latent_size),
+                                                   nn.Softplus())
 
     def forward(self, y:torch.Tensor, e:torch.Tensor):# y: [num_stocks] e: [num_stocks, num_features]
         y_p = self.portfoliolayer(y, e) #-> [hidden_size(num_portfolios)]
         mu_z = self.map_mu_z_layer(y_p) #-> [latent_size(num_factors)]
-        sigma_z = torch.exp(self.map_sigma_z_layer(y_p)) #-> [latent_size(num_factors)]
+        sigma_z = self.map_sigma_z_layer(y_p) #-> [latent_size(num_factors)]
         return mu_z, sigma_z
 
 class AlphaLayer(nn.Module):
@@ -107,17 +133,22 @@ class AlphaLayer(nn.Module):
         σ_α = Softplus(w_σ_α * h_α + b_σ_α)
     where h_α ∈ R^H is the hidden state.
     """
-    def __init__(self, input_size, hidden_size) -> None:
+    def __init__(self, input_size, hidden_size, std_activ:Literal["exp", "softplus"] = "exp") -> None:
         super(AlphaLayer, self).__init__()
         self.alpha_h_layer = nn.Sequential(nn.Linear(input_size, hidden_size),
                                            nn.LeakyReLU())
         self.alpha_mu_layer = nn.Linear(hidden_size, 1)
-        self.alpha_sigma_layer = nn.Linear(hidden_size, 1)
+        if std_activ == "exp":
+            self.alpha_sigma_layer = nn.Sequential(nn.Linear(hidden_size, 1),
+                                                   Exp())
+        elif std_activ == "softplus":
+            self.alpha_sigma_layer = nn.Sequential(nn.Linear(hidden_size, 1),
+                                                   nn.Softplus())
     
     def forward(self, e):#e: [num_stocks, num_features]
         h_alpha = self.alpha_h_layer(e) #->[num_stocks, num_portfolios(hidden_size)]
         mu_alpha = self.alpha_mu_layer(h_alpha).squeeze() #->[num_stocks]
-        sigma_alpha = torch.exp(self.alpha_sigma_layer(h_alpha).squeeze()) #->[num_stocks]
+        sigma_alpha = self.alpha_sigma_layer(h_alpha).squeeze() #->[num_stocks]
         return mu_alpha, sigma_alpha
     
 class BetaLayer(nn.Module):
@@ -144,9 +175,13 @@ class FactorDecoder(nn.Module):
         σ_y = \sqrt{ σ_α^2 + ∑ β_k ^ 2 σ_z_k^2 }
     where μ_z , σ_z ∈ R^K are the mean and the std of factors respectively.
     """
-    def __init__(self, input_size, hidden_size, latent_size) -> None: 
+    def __init__(self, 
+                 input_size, 
+                 hidden_size, 
+                 latent_size,
+                 std_activ:Literal["exp", "softplus"] = "exp") -> None: 
         super(FactorDecoder, self).__init__()
-        self.alpha_layer = AlphaLayer(input_size, hidden_size)
+        self.alpha_layer = AlphaLayer(input_size, hidden_size, std_activ=std_activ)
         self.beta_layer = BetaLayer(input_size, latent_size)
     
     def forward(self, e, mu_z, sigma_z):# e: [num_stocks, num_features], mu_z: [latent_size(num_factors)], sigma_z: [latent_size(num_factors)]
@@ -215,10 +250,16 @@ class DistributionNetwork(nn.Module):
         [µ_prior, σ_prior] = π_prior(h_muti)
 
     """
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, std_activ:Literal["exp", "softplus"] = "exp"):
         super(DistributionNetwork, self).__init__()
         self.mu_layer = nn.Linear(hidden_size, 1)
-        self.sigma_layer = nn.Linear(hidden_size, 1)
+        
+        if std_activ == "exp":
+            self.sigma_layer = nn.Sequential(nn.Linear(hidden_size, 1),
+                                             Exp())
+        elif std_activ == "softplus":
+            self.sigma_layer = nn.Sequential(nn.Linear(hidden_size, 1),
+                                             nn.Softplus())
     
     def forward(self, h_multi):#h_multi: [num_factors, hidden_size]
         mu_prior = self.mu_layer(h_multi).squeeze() #->[num_factors]
@@ -232,10 +273,14 @@ class FactorPredictor(nn.Module):
         z_prior ∼ N (μ_prior, σ_prior^2)
     where z_prior is a Gaussian random vector, described by the mean μ_prior ∈ R^K and the std σprior ∈ R^K, K is the number of factors. 
     """
-    def __init__(self, input_size, hidden_size, latent_size) -> None:
+    def __init__(self, 
+                 input_size, 
+                 hidden_size, 
+                 latent_size, 
+                 std_activ:Literal["exp", "softplus"] = "exp") -> None:
         super(FactorPredictor, self).__init__()
         self.multihead_attention = MultiHeadAttention(input_size, hidden_size, latent_size)
-        self.distribution_network = DistributionNetwork(hidden_size)
+        self.distribution_network = DistributionNetwork(hidden_size, std_activ=std_activ)
 
     def forward(self, e):
         h_multi = self.multihead_attention(e)
@@ -255,21 +300,28 @@ class FactorVAE(nn.Module):
                  gru_hidden_size,
                  hidden_size,
                  latent_size,
-                 gru_drop_out = 0.1) -> None:
+                 gru_drop_out = 0.1, 
+                 extract_hidden_state = True,
+                 std_activ:Literal["exp", "softplus"] = "exp") -> None:
         super().__init__()
         self.feature_extractor = FeatureExtractor(input_size=input_size, 
                                                   hidden_size=gru_hidden_size, 
                                                   num_layers=num_gru_layers, 
-                                                  drop_out=gru_drop_out)
-        self.encoder = FactorEncoder(input_size=gru_hidden_size * num_gru_layers, 
+                                                  drop_out=gru_drop_out,
+                                                  extract_hidden_state=extract_hidden_state)
+        extract_output_size = gru_hidden_size * num_gru_layers if extract_hidden_state else gru_hidden_size
+        self.encoder = FactorEncoder(input_size=extract_output_size, 
                                      hidden_size=hidden_size,
-                                     latent_size=latent_size)
-        self.predictor = FactorPredictor(input_size=gru_hidden_size * num_gru_layers,
+                                     latent_size=latent_size,
+                                     std_activ=std_activ)
+        self.predictor = FactorPredictor(input_size=extract_output_size,
                                          hidden_size=hidden_size,
-                                         latent_size=latent_size)
-        self.decoder = FactorDecoder(input_size=gru_hidden_size * num_gru_layers,
+                                         latent_size=latent_size,
+                                         std_activ=std_activ)
+        self.decoder = FactorDecoder(input_size=extract_output_size,
                                      hidden_size=hidden_size,
-                                     latent_size=latent_size)
+                                     latent_size=latent_size,
+                                     std_activ=std_activ)
     def forward(self, x, y):
         e = self.feature_extractor(x)
         mu_posterior, sigma_posterior = self.encoder(y, e)

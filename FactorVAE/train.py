@@ -57,22 +57,23 @@ class FactorVAETrainer:
                      val_set:StockSequenceDataset,
                      batch_size:Optional[int] = None,
                      sampler:Optional[Sampler] = None,
-                     shuffle:bool = True):
+                     shuffle:bool = True,
+                     num_workers:int = 4):
         # 数据集加载
         if sampler is not None:
             self.train_loader = DataLoader(dataset=train_set,
                                         batch_size=batch_size, 
                                         sampler=sampler,
-                                        num_workers=4)
+                                        num_workers=num_workers,)
         else:
             self.train_loader = DataLoader(dataset=train_set,
                                         batch_size=batch_size, 
                                         shuffle=shuffle,
-                                        num_workers=4)
+                                        num_workers=num_workers)
         self.val_loader = DataLoader(dataset=val_set, 
                                     batch_size=batch_size,
                                     shuffle=shuffle,
-                                    num_workers=4)
+                                    num_workers=num_workers)
         
     def save_checkpoint(self, 
                         save_folder:str, 
@@ -145,7 +146,7 @@ class FactorVAETrainer:
                 y = y.to(device=self.device)
 
                 y_hat, mu_posterior, sigma_posterior, mu_prior, sigma_prior = model(X, y) # 模型运算
-                train_loss = loss_func(y, y_hat, mu_prior, sigma_prior, mu_posterior, sigma_posterior) # 损失函数计算
+                train_loss, train_recon_loss, train_kld_loss = loss_func(y, y_hat, mu_prior, sigma_prior, mu_posterior, sigma_posterior) # 损失函数计算
                 
                 train_loss.backward() # 梯度反向传播
                 optimizer.step() # 优化器更新模型权重
@@ -154,7 +155,8 @@ class FactorVAETrainer:
                 # 训练时抽样检查
                 if self.sample_per_batch:
                     if (batch+1) % self.sample_per_batch == 0:
-                        logging.debug(f"<Batch {batch+1}>  loss:{train_loss.item()} y_hat:{y_hat} mu_prior:{mu_prior} sigma_prior:{sigma_prior} mu_posterior:{mu_posterior} sigma_posterior:{sigma_posterior}")
+                        logging.debug(f"<Batch {batch+1}>  loss:{train_loss.item()} recon:{train_recon_loss.item()} kld:{train_kld_loss.item()}")
+                        logging.debug(f"<Batch {batch+1}>  y_hat:{y_hat} mu_prior:{mu_prior} sigma_prior:{sigma_prior} mu_posterior:{mu_posterior} sigma_posterior:{sigma_posterior}")
               
             # Tensorboard写入当前完成epoch的训练损失
             train_loss_epoch = sum(train_loss_list)/len(train_loss_list)
@@ -167,7 +169,7 @@ class FactorVAETrainer:
                     X = X.to(device=self.device)
                     y = y.to(device=self.device)
                     y_hat, mu_posterior, sigma_posterior, mu_prior, sigma_prior = model(X, y)
-                    val_loss = loss_func(y, y_hat, mu_prior, sigma_prior, mu_posterior, sigma_posterior)
+                    val_loss, *_ = loss_func(y, y_hat, mu_prior, sigma_prior, mu_posterior, sigma_posterior)
                     val_loss_list.append(val_loss.item())
 
                 val_loss_epoch = sum(val_loss_list) / len(val_loss_list)  
@@ -198,6 +200,7 @@ class FactorVAETrainer:
                     self.save_checkpoint(save_folder=self.save_folder,
                                          save_name=model_name,
                                          save_format=self.save_format)
+                    logging.info(f"Epoch {epoch+1} Model weights saved to {os.path.join(self.save_folder)}")
 
         writer.close()
 
@@ -209,7 +212,7 @@ def parse_args():
     parser.add_argument("--log_name", type=str, default="log.txt", help="Name of log file. Default `log.txt`")
 
     parser.add_argument("--dataset_path", type=str, required=True, help="Path of dataset .pt file")
-    parser.add_argument("--checkpoint_path", type=str, default=None, help="Path of checkpoint")
+    parser.add_argument("--checkpoint_path", type=str, default=None, help="Path of checkpoint. Optional")
 
     parser.add_argument("--input_size", type=int, required=True, help="Input size of feature extractor, i.e. num of features.")
     parser.add_argument("--num_gru_layers", type=int, required=True, help="Num of GRU layers in feature extractor.")
@@ -220,6 +223,7 @@ def parse_args():
 
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate for optimizer. Default 0.001")
     parser.add_argument("--gamma", type=float, default=1, help="Gamma for KL Div in Objective Function Loss. Default 1")
+    parser.add_argument("--num_workers", type=int, default=4, help="Num of subprocesses to use for data loading. 0 means that the data will be loaded in the main process. Default 4")
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Whether to shuffle dataloader. Default True")
     parser.add_argument("--num_batches_per_epoch", type=int, default=None, help="Num of batches sampled from all batches to be trained per epoch. Note that sampler option is mutually exclusive with shuffle. Specify None to disable Default None")
     
@@ -240,6 +244,7 @@ if __name__ == "__main__":
 
     os.makedirs(args.log_folder, exist_ok=True)
     os.makedirs(args.save_folder, exist_ok=True)
+    os.environ["TF_ENABLE_ONEDNN_OPTS"] = 0
 
     logging.basicConfig(
         level=logging.DEBUG,
@@ -284,7 +289,8 @@ if __name__ == "__main__":
     trainer.load_dataset(train_set=train_set, 
                          val_set=val_set, 
                          shuffle=args.shuffle, 
-                         sampler=train_sampler)
+                         sampler=train_sampler,
+                         num_workers=args.num_workers)
     if args.checkpoint_path is not None:
         trainer.load_checkpoint(args.checkpoint_path)
     trainer.set_configs(max_epoches=args.max_epoches,
@@ -295,8 +301,7 @@ if __name__ == "__main__":
                         save_folder=args.save_folder,
                         save_name=args.save_name,
                         save_format=args.save_format,
-                        hparams=hparams
-                        )
+                        hparams=hparams)
     logging.info("Training start...")
     trainer.train()
     logging.info("Training complete.")
