@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+
 from typing import Literal
 
 from utils import modules_weight_init
@@ -24,8 +26,7 @@ class FeatureExtractor(nn.Module):
                  input_size, 
                  hidden_size, 
                  num_layers, 
-                 drop_out=0.1,
-                 extract_hidden_state=True) -> None:
+                 drop_out=0.1,) -> None:
         super(FeatureExtractor, self).__init__()
         self.norm_layer = nn.LayerNorm(input_size)
         self.proj_layer = nn.Sequential(nn.Linear(input_size, hidden_size), 
@@ -35,18 +36,14 @@ class FeatureExtractor(nn.Module):
                                 num_layers, 
                                 batch_first=False, 
                                 dropout=drop_out)
-        self.extract_hidden_state = extract_hidden_state
 
     def forward(self, x):# input: [seq_len, num_stocks, input_size(num_features)]
         x = self.norm_layer(x)
         x_proj = self.proj_layer(x) # -> x_proj: [seq_len, num_stocks, hidden_size]
         #print("proj_x:",x_proj)
         out, h = self.gru_layer(x_proj) # -> h: [num_layers, batch_size, hidden_size]
-        if self.extract_hidden_state:
-            h = h.permute(1, 0, 2) # -> h: [batch_size, num_layers, hidden_size]
-            e = h.reshape(h.shape[0], -1) # -> e: [batch_size, num_layers * hidden_size]
-        else:
-            e = out[-1] # -> e: [batch_size, hidden_size]
+        h = h.permute(1, 0, 2) # -> h: [batch_size, num_layers, hidden_size]
+        e = h.reshape(h.shape[0], -1) # -> e: [batch_size, num_layers * hidden_size]
 
         return e
 
@@ -301,24 +298,22 @@ class FactorVAE(nn.Module):
                  hidden_size,
                  latent_size,
                  gru_drop_out = 0.1, 
-                 extract_hidden_state = True,
                  std_activ:Literal["exp", "softplus"] = "exp") -> None:
         super().__init__()
         self.feature_extractor = FeatureExtractor(input_size=input_size, 
                                                   hidden_size=gru_hidden_size, 
                                                   num_layers=num_gru_layers, 
-                                                  drop_out=gru_drop_out,
-                                                  extract_hidden_state=extract_hidden_state)
-        extract_output_size = gru_hidden_size * num_gru_layers if extract_hidden_state else gru_hidden_size
-        self.encoder = FactorEncoder(input_size=extract_output_size, 
+                                                  drop_out=gru_drop_out)
+
+        self.encoder = FactorEncoder(input_size=gru_hidden_size * num_gru_layers, 
                                      hidden_size=hidden_size,
                                      latent_size=latent_size,
                                      std_activ=std_activ)
-        self.predictor = FactorPredictor(input_size=extract_output_size,
+        self.predictor = FactorPredictor(input_size=gru_hidden_size * num_gru_layers,
                                          hidden_size=hidden_size,
                                          latent_size=latent_size,
                                          std_activ=std_activ)
-        self.decoder = FactorDecoder(input_size=extract_output_size,
+        self.decoder = FactorDecoder(input_size=gru_hidden_size * num_gru_layers,
                                      hidden_size=hidden_size,
                                      latent_size=latent_size,
                                      std_activ=std_activ)
@@ -335,6 +330,7 @@ class FactorVAE(nn.Module):
         y_pred = self.decoder(e, mu_prior, sigma_prior)
         return y_pred, mu_prior, sigma_prior 
     
+
 
         
 

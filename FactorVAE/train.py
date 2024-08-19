@@ -220,6 +220,7 @@ def parse_args():
     parser.add_argument("--hidden_size", type=int, required=True, help="Hidden size of FactorVAE(Encoder, Pedictor and Decoder), i.e. num of portfolios.")
     parser.add_argument("--latent_size", type=int, required=True, help="Latent size of FactorVAE(Encoder, Pedictor and Decoder), i.e. num of factors.")
     parser.add_argument("--gru_dropout", type=float, default=0.1, help="Dropout probs in gru layers. Default 0.1")
+    parser.add_argument("--std_activation", type=str, default="exp", help="Activation function for standard deviation calculation, literally `exp` or `softplus`. Default `exp`")
 
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate for optimizer. Default 0.001")
     parser.add_argument("--gamma", type=float, default=1, help="Gamma for KL Div in Objective Function Loss. Default 1")
@@ -244,7 +245,7 @@ if __name__ == "__main__":
 
     os.makedirs(args.log_folder, exist_ok=True)
     os.makedirs(args.save_folder, exist_ok=True)
-    os.environ["TF_ENABLE_ONEDNN_OPTS"] = 0
+    os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
     logging.basicConfig(
         level=logging.DEBUG,
@@ -268,7 +269,8 @@ if __name__ == "__main__":
                       gru_hidden_size=args.gru_hidden_size, 
                       hidden_size=args.hidden_size, 
                       latent_size=args.latent_size,
-                      gru_drop_out=args.gru_dropout)
+                      gru_drop_out=args.gru_dropout,
+                      std_activ=args.std_activation)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     loss_func = ObjectiveLoss(gamma=args.gamma)
@@ -311,3 +313,5 @@ if __name__ == "__main__":
 # python train.py --log_folder "D:\PycharmProjects\SWHY\log\FactorVAE" --log_name "Model4" --dataset_path "D:\PycharmProjects\SWHY\data\preprocess\dataset_cs_zscore.pt" --input_size 101 --num_gru_layers 2 --gru_hidden_size 32 --hidden_size 16 --latent_size 4 --save_folder "D:\PycharmProjects\SWHY\model\factor-vae\model1" --save_name "model4" --save_format ".pt" --sample_per_batch 200
 
 # python train.py --log_folder "D:\PycharmProjects\SWHY\log\FactorVAE" --log_name "Model5" --dataset_path "D:\PycharmProjects\SWHY\data\preprocess\dataset.pt" --input_size 101 --num_gru_layers 2 --gru_hidden_size 32 --hidden_size 16 --latent_size 4 --save_folder "D:\PycharmProjects\SWHY\model\factor-vae\model5" --save_name "model5" --save_format ".pt" --sample_per_batch 50 --num_batches_per_epoch 200
+
+# python train.py --log_folder "D:\PycharmProjects\SWHY\log\FactorVAE" --log_name "Model8.txt" --dataset_path "D:\PycharmProjects\SWHY\data\preprocess\dataset.pt" --input_size 101 --num_gru_layers 4 --gru_hidden_size 32 --hidden_size 100 --latent_size 48 --gru_dropout 0.1 --std_activation "exp" --save_folder "D:\PycharmProjects\SWHY\model\factor-vae\model8" --save_name "model8" --save_format ".pt" --sample_per_batch 50 --num_batches_per_epoch 200
