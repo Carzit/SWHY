@@ -227,8 +227,10 @@ if __name__ == "__main__":
     train_set = StockSequenceDataset(train_set, seq_len=args.train_seq_len)
     val_set = StockSequenceDataset(val_set, seq_len=args.val_seq_len or args.train_seq_len)
     test_set = StockSequenceDataset(test_set, seq_len=args.test_seq_len or args.train_seq_len)
+    logging.debug(f"train_set length: {len(train_set)}, val_set length: {len(val_set)}, test_set length: {len(test_set)}")
 
     torch.save({"train": train_set, "val": val_set, "test": test_set}, args.save_path)
+    logging.debug(f"dataset saved to {args.save_path}")
 
 # python dataset.py --x_folder "D:\PycharmProjects\SWHY\data\preprocess\alpha" --y_folder "D:\PycharmProjects\SWHY\data\preprocess\label" --label_name "ret10" --train_seq_len 20 --save_path "D:\PycharmProjects\SWHY\data\preprocess\dataset.pt"
 

@@ -226,7 +226,7 @@ def parse_args():
     parser.add_argument("--gamma", type=float, default=1, help="Gamma for KL Div in Objective Function Loss. Default 1")
     parser.add_argument("--num_workers", type=int, default=4, help="Num of subprocesses to use for data loading. 0 means that the data will be loaded in the main process. Default 4")
     parser.add_argument("--shuffle", type=str2bool, default=True, help="Whether to shuffle dataloader. Default True")
-    parser.add_argument("--num_batches_per_epoch", type=int, default=None, help="Num of batches sampled from all batches to be trained per epoch. Note that sampler option is mutually exclusive with shuffle. Specify None to disable Default None")
+    parser.add_argument("--num_batches_per_epoch", type=int, default=None, help="Num of batches sampled from all batches to be trained per epoch. Note that sampler option is mutually exclusive with shuffle. Specify -1 to disable (use all batches). Default -1")
     
     parser.add_argument("--max_epoches", type=int, default=20, help="Max Epoches for train loop")
     parser.add_argument("--sample_per_batch", type=int, default=0, help="Check X, y and all kinds of outputs per n batches in one epoch. Specify 0 to unable. Default 0")
@@ -259,7 +259,7 @@ if __name__ == "__main__":
     train_set = datasets["train"]
     val_set = datasets["val"]
     test_set = datasets["test"]
-    if args.num_batches_per_epoch is not None:
+    if args.num_batches_per_epoch != -1:
         train_sampler = RandomSampleSampler(train_set, args.num_batches_per_epoch)
     else:
         train_sampler = None
