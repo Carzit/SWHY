@@ -166,6 +166,7 @@ def parse_args():
     parser.add_argument("--gru_hidden_size", type=int, required=True, help="Hidden size of each GRU layer. num_gru_layers * gru_hidden_size i.e. the input size of FactorEncoder and Factor Predictor.")
     parser.add_argument("--hidden_size", type=int, required=True, help="Hidden size of FactorVAE(Encoder, Pedictor and Decoder), i.e. num of portfolios.")
     parser.add_argument("--latent_size", type=int, required=True, help="Latent size of FactorVAE(Encoder, Pedictor and Decoder), i.e. num of factors.")
+    parser.add_argument("--std_activation", type=str, default="exp", help="Activation function for standard deviation calculation, literally `exp` or `softplus`. Default `exp`")
     
     parser.add_argument("--num_workers", type=int, default=4, help="Num of subprocesses to use for data loading. 0 means that the data will be loaded in the main process. Default 4")
     parser.add_argument("--metric", type=str, default="IC", help="Eval metric type, literally `MSE`, `IC`, `Rank_IC`, `ICIR` or `Rank_ICIR`. Default `IC`. ")
@@ -180,6 +181,7 @@ if __name__ == "__main__":
     args = parse_args()
     
     os.makedirs(args.log_folder, exist_ok=True)
+    os.makedirs(args.save_folder, exist_ok=True)
     os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
     os.environ["TF_ENABLE_ONEDNN_OPTS"] = 0
     
@@ -199,7 +201,8 @@ if __name__ == "__main__":
                       gru_hidden_size=args.gru_hidden_size, 
                       hidden_size=args.hidden_size, 
                       latent_size=args.latent_size,
-                      gru_drop_out=0)
+                      gru_drop_out=0,
+                      std_activ=args.std_activation)
     
     evaluator = FactorVAEEvaluator(model=model)
     evaluator.load_checkpoint(args.checkpoint_path)
