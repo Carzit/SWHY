@@ -45,13 +45,13 @@ class StockDataset(Dataset):
                  data_x_dir:str, 
                  data_y_dir:str, 
                  label_name:str, 
-                 format:Literal["csv", "pkl", "parquet", "feather"] = "csv",
+                 format:Literal["csv", "pkl", "parquet", "feather"] = "pkl",
                  cache_size:int = 10) -> None:
         super().__init__()
         self.data_x_dir:str = data_x_dir
         self.data_y_dir:str = data_y_dir
         
-        self.format:str = "csv"
+        self.format:str = format
         self.label_name:str = label_name
 
         self.x_file_paths:List[str] = [os.path.join(data_x_dir, f) for f in os.listdir(data_x_dir) if f.endswith(format)]
@@ -192,6 +192,7 @@ def parse_args():
 
     parser.add_argument("--x_folder", type=str, required=True, help="Path of folder for x (alpha) data csv files")
     parser.add_argument("--y_folder", type=str, required=True, help="Path of folder for y (label) data csv files")
+    parser.add_argument("--file_format", type=str, default="pkl", help="File format to read, literally `csv`, `pkl`, `parquet` or `feather`. Default `pkl`")
     parser.add_argument("--label_name", type=str, required=True, help="Target label name (col name in y files)")
 
     parser.add_argument("--split_ratio", type=float, nargs=3, default=[0.7, 0.2, 0.1], help="Split ratio for train-validation-test. Default 0.7, 0.2, 0.1")
@@ -222,7 +223,8 @@ if __name__ == "__main__":
 
     dataset = StockDataset(data_x_dir=args.x_folder,
                            data_y_dir=args.y_folder,
-                           label_name=args.label_name)
+                           label_name=args.label_name, 
+                           format=args.file_format)
     train_set, val_set, test_set = dataset.serial_split(ratios=args.split_ratio, mask=args.mask_len)
     train_set = StockSequenceDataset(train_set, seq_len=args.train_seq_len)
     val_set = StockSequenceDataset(val_set, seq_len=args.val_seq_len or args.train_seq_len)
@@ -230,7 +232,7 @@ if __name__ == "__main__":
     logging.debug(f"train_set length: {len(train_set)}, val_set length: {len(val_set)}, test_set length: {len(test_set)}")
 
     torch.save({"train": train_set, "val": val_set, "test": test_set}, args.save_path)
-    logging.debug(f"dataset saved to {args.save_path}")
+    logging.debug(f"Dataset saved to {args.save_path}")
 
 # python dataset.py --x_folder "D:\PycharmProjects\SWHY\data\preprocess\alpha" --y_folder "D:\PycharmProjects\SWHY\data\preprocess\label" --label_name "ret10" --train_seq_len 20 --save_path "D:\PycharmProjects\SWHY\data\preprocess\dataset.pt"
 
