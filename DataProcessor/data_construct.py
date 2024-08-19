@@ -365,6 +365,7 @@ def parse_args():
     parser.add_argument("--alpha_folder", type=str, required=True, help="Path of folder for alpha pickle files")
     parser.add_argument("--label_folder", type=str, required=True, help="Path of folder for label pickle files")
     parser.add_argument("--save_folder", type=str, required=True, help="Path of folder for Processor to save processed result in subdir `alpha` and `label`")
+    parser.add_argument("--save_format", type=str, default="pkl", help="File format to save, literally `csv`, `pkl`, `parquet` or `feather`. Default `pkl`")
     parser.add_argument("--fill_value", type=float, default=0, help="Filling value for missing value in AlphaProcessor")
     parser.add_argument("--merge_mode", type=str, default="date", help="Merge mode for alpha data, `date`, `stock_code` or `all`. Default `date`")
 
@@ -406,7 +407,14 @@ if __name__ == "__main__":
     alpha_processor.common_filter()
     label_processor.common_filter()
 
-    alpha_processor.process(merge_mode=args.merge_mode, save_folder=os.path.join(args.save_folder, "alpha"))
-    label_processor.process(merge_mode=args.merge_mode, save_folder=os.path.join(args.save_folder, "label"))
+    logging.debug("Doing Alpha data split...")
+    alpha_processor.process(merge_mode=args.merge_mode, save_folder=os.path.join(args.save_folder, "alpha"), save_format=args.save_format)
+    logging.debug(f"Alpha date data saved to {os.path.join(args.save_folder, "alpha")}")
+    
+    logging.debug("Doing Label data split...")
+    label_processor.process(merge_mode=args.merge_mode, save_folder=os.path.join(args.save_folder, "label"), save_format=args.save_format)
+    logging.debug(f"Label date data saved to {os.path.join(args.save_folder, "label")}")
+    
+    logging.debug("Data Construct Accomplished")
 
 # python data_construct.py --alpha_folder "data\Alpha101" --label_folder "data\label" --save_folder "data\preprocess" --merge_mode "date" --log_folder "log"
